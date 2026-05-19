@@ -1,0 +1,58 @@
+name: Sync upstream paperclipai/paperclip
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # Every Monday 9am UTC
+  workflow_dispatch:        # Manual trigger any time
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout growth-claw
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/paperclipai/paperclip.git || true
+          git fetch upstream
+
+      - name: Try fast-forward merge to main
+        id: merge
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git merge upstream/master --ff-only; then
+            echo "clean=true" >> $GITHUB_OUTPUT
+          else
+            echo "clean=false" >> $GITHUB_OUTPUT
+            git merge --abort || true
+          fi
+
+      - name: Push clean merge
+        if: steps.merge.outputs.clean == 'true'
+        run: git push origin main
+
+      - name: Open PR for conflicted merge
+        if: steps.merge.outputs.clean == 'false'
+        run: |
+          BRANCH="sync/upstream-$(date +%Y-%m-%d)"
+          git checkout -b "$BRANCH"
+          git merge upstream/master --no-ff -m "chore: sync upstream paperclipai/paperclip $(date +%Y-%m-%d)" || true
+          git add -A
+          git commit -m "chore: resolve upstream conflicts $(date +%Y-%m-%d)" || true
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: sync upstream $(date +%Y-%m-%d)" \
+            --body "Automated upstream sync from paperclipai/paperclip. Conflicts need manual resolution before merging into roo-branding." \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
