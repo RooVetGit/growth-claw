@@ -72,11 +72,11 @@ const EXE_DEV_SSH_EMAIL_PROMPT = "Please enter your email address:";
 // exe.dev's `--setup-script` runs at VM init as the unprivileged `exedev` user, which
 // has passwordless sudo. The Paperclip sandbox callback bridge is a Node script, so
 // every Paperclip workload on this provider needs node on PATH before the bridge can
-// start. When the operator hasn't supplied their own setup script, install Node 20 via
+// start. When the operator hasn't supplied their own setup script, install Node 22 via
 // nodesource so the VM comes up ready for Paperclip out of the box.
 const DEFAULT_SETUP_SCRIPT =
   "command -v node >/dev/null 2>&1 || " +
-  "(curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && " +
+  "(curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && " +
   "sudo apt-get install -y nodejs)";
 
 class ExeDevApiError extends Error {
