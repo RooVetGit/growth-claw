@@ -1,3 +1,6 @@
 .DS_Store
 .obsidian/workspace*
 .obsidian/cache
+
+# Personal Claude Code approvals may contain credentials
+**/.claude/settings.local.json
