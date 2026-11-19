@@ -62,6 +62,14 @@ jobs:
             pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
           fi
 
+      - name: Share the CI-resolved lockfile
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
+
   typecheck_release_registry:
     name: Typecheck + Release Registry
     needs: [policy]
@@ -71,6 +79,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Restore the CI-resolved lockfile
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: .
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -111,6 +125,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Restore the CI-resolved lockfile
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: .
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -158,6 +178,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore the CI-resolved lockfile
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: .
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -201,6 +227,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore the CI-resolved lockfile
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: .
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -228,6 +260,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore the CI-resolved lockfile
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: .
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -247,6 +285,7 @@ jobs:
       - name: Release canary dry run via release.sh internal build
         run: |
           git checkout -B master HEAD
+          # Release requires a clean tree; dependencies already use the CI lock.
           git checkout -- pnpm-lock.yaml
           ./scripts/release.sh canary --skip-verify --dry-run
 
@@ -258,6 +297,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Restore the CI-resolved lockfile
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: resolved-pnpm-lock
+          path: .
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
