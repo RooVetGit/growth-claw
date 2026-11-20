@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   verify_plan:
-    runs-on: ${{ vars.BLACKSMITH_2VCPU_UBUNTU_LATEST }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
@@ -78,7 +78,7 @@ jobs:
           echo "Planned ${matrix}"
 
   verify_typecheck:
-    runs-on: ${{ vars.BLACKSMITH_4VCPU_UBUNTU_LATEST }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
@@ -111,7 +111,7 @@ jobs:
   verify_tests:
     name: tests (${{ matrix.label }})
     needs: verify_plan
-    runs-on: ${{ vars.BLACKSMITH_4VCPU_UBUNTU_LATEST }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
@@ -153,7 +153,7 @@ jobs:
           fi
 
   verify_build:
-    runs-on: ${{ vars.BLACKSMITH_4VCPU_UBUNTU_LATEST }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
