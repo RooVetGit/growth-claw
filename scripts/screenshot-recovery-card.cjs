@@ -4,10 +4,7 @@ const path = require("path");
 const fs = require("fs");
 
 const repoRoot = path.resolve(__dirname, "..");
-const playwright = require(path.join(
-  repoRoot,
-  "node_modules/.pnpm/playwright@1.58.2/node_modules/playwright/index.js",
-));
+const playwright = require("@playwright/test");
 
 const STORYBOOK_BASE = process.env.STORYBOOK_URL ?? "http://localhost:6006";
 const OUT_DIR = path.resolve(repoRoot, "tmp/pap-9134-recovery-screens");

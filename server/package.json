@@ -66,7 +66,7 @@
     "dompurify": "^3.3.2",
     "dotenv": "^17.0.1",
     "drizzle-orm": "^0.45.2",
-    "embedded-postgres": "^18.1.0-beta.16",
+    "embedded-postgres": "18.7.0-beta.19",
     "express": "^5.1.0",
     "hermes-paperclip-adapter": "^0.2.0",
     "jsdom": "^28.1.0",
