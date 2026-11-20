@@ -26,28 +26,77 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify_canary:
-    if: github.event_name == 'push'
+  verify_plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     permissions:
       contents: read
-
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Plan test matrix
+        id: plan
+        run: |
+          set -euo pipefail
+          node scripts/run-vitest-stable.mjs --mode serialized --dry-run > "$RUNNER_TEMP/serialized.json"
+          matrix="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const report = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            const suitesPerShard = 8;
+            const shardCount = Math.max(1, Math.ceil(report.serializedSuiteCount / suitesPerShard));
+            const include = [
+              { lane: "general", group: "general-server", label: "server", shard_index: "0", shard_count: "1" },
+              { lane: "general", group: "general-workspaces-a", label: "workspaces-a", shard_index: "0", shard_count: "1" },
+              { lane: "general", group: "general-workspaces-b", label: "workspaces-b", shard_index: "0", shard_count: "1" },
+            ];
+            for (let shardIndex = 0; shardIndex < shardCount; shardIndex += 1) {
+              include.push({
+                lane: "serialized",
+                group: "",
+                label: `serialized ${shardIndex + 1}/${shardCount}`,
+                shard_index: String(shardIndex),
+                shard_count: String(shardCount),
+              });
+            }
+            process.stdout.write(JSON.stringify({ include }));
+          ' "$RUNNER_TEMP/serialized.json")"
+          {
+            echo "matrix<<EOF"
+            echo "$matrix"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Planned ${matrix}"
+
+  verify_typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Validate release package manifest
@@ -59,15 +108,81 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
-      - name: Run tests
-        run: pnpm test:run
+  verify_tests:
+    name: tests (${{ matrix.label }})
+    needs: verify_plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.verify_plan.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run test lane
+        env:
+          LANE: ${{ matrix.lane }}
+          GROUP: ${{ matrix.group }}
+          SHARD_INDEX: ${{ matrix.shard_index }}
+          SHARD_COUNT: ${{ matrix.shard_count }}
+        run: |
+          set -euo pipefail
+          if [ "$LANE" = "general" ]; then
+            pnpm test:run:general -- --group "$GROUP"
+          else
+            pnpm test:run:serialized -- --shard-index "$SHARD_INDEX" --shard-count "$SHARD_COUNT"
+          fi
+
+  verify_build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build
         run: pnpm build
 
   publish_canary:
     if: github.event_name == 'push'
-    needs: verify_canary
+    needs: [verify_typecheck, verify_tests, verify_build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-canary
@@ -77,19 +192,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Validate release package manifest
@@ -120,49 +235,9 @@ jobs:
           fi
           git push origin "refs/tags/${tag}"
 
-  verify_stable:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.source_ref }}
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Validate release package manifest
-        run: node ./scripts/release-package-map.mjs check
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm -r typecheck
-
-      - name: Run tests
-        run: pnpm test:run
-
-      - name: Build
-        run: pnpm build
-
   preview_stable:
     if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-    needs: verify_stable
+    needs: [verify_typecheck, verify_tests, verify_build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -170,20 +245,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_ref }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Validate release package manifest
@@ -195,16 +270,17 @@ jobs:
       - name: Dry-run stable release
         env:
           GITHUB_ACTIONS: "true"
+          STABLE_DATE: ${{ inputs.stable_date }}
         run: |
           args=(stable --skip-verify --dry-run)
-          if [ -n "${{ inputs.stable_date }}" ]; then
-            args+=(--date "${{ inputs.stable_date }}")
+          if [ -n "$STABLE_DATE" ]; then
+            args+=(--date "$STABLE_DATE")
           fi
           ./scripts/release.sh "${args[@]}"
 
   publish_stable:
     if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
-    needs: verify_stable
+    needs: [verify_typecheck, verify_tests, verify_build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-stable
@@ -214,20 +290,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_ref }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Install dependencies
@@ -244,10 +320,11 @@ jobs:
       - name: Publish stable
         env:
           GITHUB_ACTIONS: "true"
+          STABLE_DATE: ${{ inputs.stable_date }}
         run: |
           args=(stable --skip-verify)
-          if [ -n "${{ inputs.stable_date }}" ]; then
-            args+=(--date "${{ inputs.stable_date }}")
+          if [ -n "$STABLE_DATE" ]; then
+            args+=(--date "$STABLE_DATE")
           fi
           ./scripts/release.sh "${args[@]}"
 

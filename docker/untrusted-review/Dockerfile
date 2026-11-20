@@ -17,7 +17,10 @@ RUN apt-get update \
 
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
-RUN corepack enable \
+# Node 25+ images no longer ship corepack.
+RUN npm install --global corepack@0.36.0 \
+  && corepack enable \
+  && corepack prepare pnpm@9.15.4 --activate \
   && npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest
 
 RUN useradd --create-home --shell /bin/bash reviewer
