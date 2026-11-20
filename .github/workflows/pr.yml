@@ -33,9 +33,12 @@ jobs:
 
       - name: Reject a lockfile pnpm would not write
         if: github.head_ref != 'chore/refresh-lockfile'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
+          changed="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
           if ! printf '%s\n' "$changed" | grep -qx 'pnpm-lock.yaml'; then
             exit 0
           fi
@@ -54,14 +57,20 @@ jobs:
         run: node ./scripts/release-package-map.mjs check
 
       - name: Verify release package bootstrap for changed manifests
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          mapfile -t changed_paths < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")
-          PAPERCLIP_RELEASE_BOOTSTRAP_BASE_SHA="${{ github.event.pull_request.base.sha }}" \
+          mapfile -t changed_paths < <(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          PAPERCLIP_RELEASE_BOOTSTRAP_BASE_SHA="$BASE_SHA" \
             node ./scripts/check-release-package-bootstrap.mjs "${changed_paths[@]}"
 
       - name: Validate dependency resolution when manifests change
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
+          changed="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
           manifest_pattern='(^|/)package\.json$|^pnpm-workspace\.yaml$|^\.npmrc$|^pnpmfile\.(cjs|js|mjs)$'
           if printf '%s\n' "$changed" | grep -Eq "$manifest_pattern"; then
             pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
